@@ -1020,6 +1020,7 @@ class CopilotSdkProvider:
             r"\[Tool Call:\s*\w+\("       # [Tool Call: name(
             r"|Tool Result \(\w+\):"      # Tool Result (name):
             r"|<tool_used\s+name="        # <tool_used name=  (XML format mimicked)
+            r"|<tool_result\s+name="      # <tool_result name= (XML-style tool result)
         )
         _MAX_FAKE_TC_RETRIES = 2
 
@@ -1062,8 +1063,9 @@ class CopilotSdkProvider:
                         "tool calls."
                     ),
                 }
-                messages.append(correction_msg)
-                prompt = convert_messages_to_prompt(messages)
+                # Build a separate list for the retry to avoid mutating the original messages
+                retry_messages = [*messages, correction_msg]
+                prompt = convert_messages_to_prompt(retry_messages)
 
                 response = await retry_with_backoff(
                     _do_complete, self._retry_config, on_retry=_on_retry

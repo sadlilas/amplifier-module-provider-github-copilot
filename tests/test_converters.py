@@ -100,6 +100,29 @@ class TestConvertMessagesToPrompt:
         assert "Let me check that." in result
         assert '<tool_used name="read_file">' in result
 
+    def test_assistant_tool_calls_extracted_from_content_blocks(self):
+        """Should extract tool calls from content blocks when tool_calls key is missing."""
+        messages = [
+            {
+                "role": "assistant",
+                "content": [
+                    {"type": "text", "text": "Let me read that file."},
+                    {
+                        "type": "tool_call",
+                        "id": "call_abc",
+                        "name": "read_file",
+                        "input": {"path": "test.py"},
+                    },
+                ],
+                # Note: no "tool_calls" key
+            }
+        ]
+        result = convert_messages_to_prompt(messages)
+
+        assert "Let me read that file." in result
+        assert '<tool_used name="read_file">' in result
+        assert "test.py" in result
+
     def test_list_content_blocks(self):
         """Should handle OpenAI-style list content blocks."""
         messages = [
