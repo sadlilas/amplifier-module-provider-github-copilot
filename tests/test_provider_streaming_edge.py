@@ -109,11 +109,15 @@ class TestStreamingEdgeCases:
     async def test_thinking_content_included_when_extended_thinking_enabled(
         self, provider, mock_session, sample_messages
     ):
-        """Thinking content should be included in response when extended_thinking_enabled=True.
+        """Exercises the thinking content code path when extended_thinking is requested.
 
         Covers branch 565->563: thinking budget handling.
-        When extended_thinking_enabled is True and thinking_content is captured,
-        a ThinkingBlock should be included in the response content.
+        This test exercises the code path that handles thinking_content when
+        extended_thinking=True is passed. The actual inclusion of ThinkingBlock
+        depends on model support, which varies at runtime.
+
+        Note: We assert response is valid but don't deterministically assert
+        ThinkingBlock presence since that depends on model capability detection.
         """
 
         # Simulate events that would be fired during streaming
@@ -163,9 +167,8 @@ class TestStreamingEdgeCases:
             request = {"messages": sample_messages}
             response = await provider.complete(request, extended_thinking=True)
 
-            # Should have thinking content in the response
-            # Note: Response may not have thinking if model doesn't support it
-            # but the code path for thinking_content handling is exercised
+            # Response should be valid - the code path for thinking_content handling is exercised
+            # Actual ThinkingBlock presence depends on model capability detection
             assert isinstance(response, ChatResponse)
             assert len(response.content) > 0
 
@@ -226,16 +229,30 @@ class TestStreamingEdgeCases:
                 assert not isinstance(block, ThinkingBlock)
 
     @pytest.mark.asyncio
-    async def test_streaming_with_tool_capture_forces_streaming_mode(
-        self, provider, mock_session, sample_messages, mock_tool_response
+    async def test_streaming_forced_when_tools_present_despite_config(
+        self, mock_coordinator, provider_config, mock_session, sample_messages
     ):
-        """Streaming should be forced when tools are present for event-based capture.
+        """Streaming should be FORCED when tools are present, even if config says False.
 
         Covers branch 853: Streaming with tool capture interaction.
         When request has tools, use_streaming should be forced to True
         for the Deny + Destroy pattern to work correctly.
+
+        This test specifically uses use_streaming=False to verify forcing behavior.
         """
-        tools_used = []
+        # Create provider with streaming DISABLED
+        config = {
+            **provider_config,
+            "use_streaming": False,  # Explicitly disable streaming
+            "max_retries": 0,
+        }
+        non_streaming_provider = CopilotSdkProvider(
+            api_key=None,
+            config=config,
+            coordinator=mock_coordinator,
+        )
+
+        session_params = []
 
         async def simulate_streaming_with_tools(*args, **kwargs):
             for handler in mock_session._event_handlers:
@@ -269,27 +286,30 @@ class TestStreamingEdgeCases:
             excluded_tools=None,
             hooks=None,
         ):
-            # Capture whether streaming was passed as True
-            tools_used.append(
+            # Capture the streaming parameter to verify forcing behavior
+            session_params.append(
                 {"streaming": streaming, "tools": tools, "excluded_tools": excluded_tools}
             )
             yield mock_session
             await mock_session.destroy()
 
         with patch.object(CopilotClientWrapper, "create_session", mock_create_session):
-            # Request with tools - should force streaming
+            # Request WITH tools - should force streaming=True despite config
             request = {
                 "messages": sample_messages,
                 "tools": [
                     {"name": "read_file", "description": "Read a file", "parameters": {}}
                 ],
             }
-            response = await provider.complete(request)
+            response = await non_streaming_provider.complete(request)
 
             assert isinstance(response, ChatResponse)
-            # Verify streaming was enabled for the session
-            assert len(tools_used) > 0
-            assert tools_used[0]["streaming"] is True
+            # CRITICAL: Verify streaming was FORCED to True despite use_streaming=False
+            assert len(session_params) > 0, "create_session should have been called"
+            assert session_params[0]["streaming"] is True, (
+                "Streaming should be forced to True when tools are present, "
+                f"even though use_streaming=False. Got: {session_params[0]}"
+            )
 
     @pytest.mark.asyncio
     async def test_token_counting_from_streaming_events(
@@ -436,14 +456,17 @@ class TestStreamingErrorRecovery:
         return session
 
     @pytest.mark.asyncio
-    async def test_tools_returned_despite_error_during_streaming(
+    async def test_tools_returned_when_session_completes_normally(
         self, provider, mock_session, sample_messages
     ):
-        """Tools captured before an error should still be returned.
+        """Tools captured during streaming should be returned when session completes.
 
-        Covers branch 989-990: Error recovery during streaming.
-        If tools are captured before a non-fatal error occurs during wait,
-        the provider should return those tools instead of raising.
+        Covers branch 989-990: Tool capture during streaming.
+        When tools are captured before SESSION_IDLE, the provider should
+        return those tools in the response.
+
+        Note: This tests the happy path where session completes normally.
+        Error recovery is tested separately in test_session_error_propagates_as_kernel_error.
         """
 
         async def simulate_streaming_with_error(*args, **kwargs):

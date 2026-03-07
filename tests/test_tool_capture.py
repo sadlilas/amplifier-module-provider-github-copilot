@@ -62,9 +62,11 @@ class TestOverridesBuiltInToolFlag:
         constants_path = os.path.join(
             os.path.dirname(os.path.dirname(__file__)),
             "amplifier_module_provider_github_copilot",
-            "_constants.py"
+            "_constants.py",
         )
         spec = importlib.util.spec_from_file_location("_constants", constants_path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Could not load '_constants' module from {constants_path!r}")
         constants = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(constants)
         return constants.COPILOT_BUILTIN_TOOL_NAMES

@@ -672,8 +672,11 @@ class TestCrossPlatformCliDetection:
         get_platform_info.cache_clear()
 
         # Result should contain copilot.exe
-        if result:
-            assert "copilot.exe" in result, f"Path should contain copilot.exe: {result}"
+        assert result is not None, "CLI discovery should return a path when Path.exists returns True"
+        assert "copilot.exe" in result, f"Path should contain copilot.exe: {result}"
+        # Verify _ensure_executable was called with the correct path
+        assert len(ensured_paths) == 1, f"Should have called _ensure_executable once, got: {ensured_paths}"
+        assert ensured_paths[0].endswith("copilot.exe"), f"Should ensure copilot.exe, got: {ensured_paths[0]}"
 
     def test_linux_uses_no_extension_in_find_copilot_cli(self):
         """On Linux (sys.platform == 'linux'), should look for copilot (no .exe)."""
@@ -703,8 +706,8 @@ class TestCrossPlatformCliDetection:
         get_platform_info.cache_clear()
 
         # Result should NOT contain .exe
-        if result:
-            assert ".exe" not in result, f"Path should NOT contain .exe: {result}"
+        assert result is not None, "CLI discovery should return a path when Path.exists returns True"
+        assert ".exe" not in result, f"Path should NOT contain .exe: {result}"
 
     def test_darwin_uses_no_extension_in_find_copilot_cli(self):
         """On macOS (sys.platform == 'darwin'), should look for copilot (no .exe)."""
@@ -734,8 +737,8 @@ class TestCrossPlatformCliDetection:
         get_platform_info.cache_clear()
 
         # Result should NOT contain .exe
-        if result:
-            assert ".exe" not in result, f"Path should NOT contain .exe: {result}"
+        assert result is not None, "CLI discovery should return a path when Path.exists returns True"
+        assert ".exe" not in result, f"Path should NOT contain .exe: {result}"
 
     @pytest.mark.parametrize(
         "platform,expected_suffix",
@@ -748,8 +751,6 @@ class TestCrossPlatformCliDetection:
     )
     def test_platform_binary_name_selection(self, platform, expected_suffix):
         """Binary name selection should be correct for each platform."""
-        import sys as real_sys
-
         # Test the logic directly
         cli_name = "copilot.exe" if platform == "win32" else "copilot"
         assert cli_name == expected_suffix, (
