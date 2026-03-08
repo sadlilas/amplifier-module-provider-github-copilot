@@ -120,7 +120,8 @@ def mock_copilot_client():
     # Mock create_session
     mock_session = AsyncMock()
     mock_session.session_id = "test-session-123"
-    mock_session.destroy = AsyncMock()
+    mock_session.disconnect = AsyncMock()  # SDK 0.1.32+ uses disconnect()
+    mock_session.destroy = AsyncMock()  # Keep for backward compatibility tests
 
     # Mock send_and_wait response
     mock_response = Mock()
@@ -176,7 +177,8 @@ def mock_copilot_client_with_reasoning():
     # Mock create_session
     mock_session = AsyncMock()
     mock_session.session_id = "test-session-123"
-    mock_session.destroy = AsyncMock()
+    mock_session.disconnect = AsyncMock()  # SDK 0.1.32+ uses disconnect()
+    mock_session.destroy = AsyncMock()  # Keep for backward compatibility tests
 
     mock_response = Mock()
     mock_response.type = "assistant.message"
@@ -201,7 +203,8 @@ def mock_copilot_session():
     """Mock CopilotSession for testing."""
     session = AsyncMock()
     session.session_id = "test-session-123"
-    session.destroy = AsyncMock()
+    session.disconnect = AsyncMock()  # SDK 0.1.32+ uses disconnect()
+    session.destroy = AsyncMock()  # Keep for backward compatibility tests
 
     # Default response
     mock_response = Mock()
@@ -380,6 +383,7 @@ class MockCopilotSession:
         self.session_id = "mock-session-id"
         self.response = response
         self.destroyed = False
+        self.disconnected = False  # SDK 0.1.32+
         self.messages: list[dict[str, Any]] = []
 
     async def send_and_wait(self, options: dict[str, Any], timeout: float | None = None):
@@ -387,7 +391,13 @@ class MockCopilotSession:
         return self.response
 
     async def destroy(self) -> None:
+        """Deprecated: Use disconnect() instead (SDK 0.1.32+)."""
         self.destroyed = True
+
+    async def disconnect(self) -> None:
+        """SDK 0.1.32+ session cleanup."""
+        self.disconnected = True
+        self.destroyed = True  # For backward compat checks
 
 
 @pytest.fixture

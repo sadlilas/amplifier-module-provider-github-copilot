@@ -1,6 +1,6 @@
 [project]
 name = "amplifier-module-provider-github-copilot"
-version = "1.0.3"
+version = "1.0.4"
 description = "Amplifier provider module for GitHub Copilot CLI SDK"
 readme = "README.md"
 license = {text = "MIT"}
@@ -27,8 +27,9 @@ dependencies = [
     #   python -m pytest tests/sdk_assumptions/ -v
     # See tests/sdk_assumptions/README.md for the upgrade workflow.
     #
-    # NOTE: v0.1.30+ required for overridesBuiltInTool field (used in tool_capture.py)
-    "github-copilot-sdk>=0.1.30,<0.2.0",
+    # NOTE: v0.1.32+ required for session.disconnect() (v0.1.32 deprecated destroy())
+    # Also requires overridesBuiltInTool field (used in tool_capture.py)
+    "github-copilot-sdk>=0.1.32,<0.2.0",
     # Note: amplifier-core is provided by Amplifier runtime when module is loaded
     # For standalone testing, install from: git+https://github.com/microsoft/amplifier-core
 ]

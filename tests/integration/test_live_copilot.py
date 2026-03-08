@@ -535,7 +535,7 @@ class TestSdkModelIdFormat:
         # ═══════════════════════════════════════════════════════════════════════
         # MODEL SNAPSHOT — Update when SDK model list changes
         # ═══════════════════════════════════════════════════════════════════════
-        SNAPSHOT_SDK_VERSION = "0.1.30"
+        SNAPSHOT_SDK_VERSION = "0.1.32"
         EXPECTED_MODELS = {
             # Claude models
             "claude-haiku-4.5",
@@ -558,6 +558,7 @@ class TestSdkModelIdFormat:
             "gpt-5.2",
             "gpt-5.2-codex",
             "gpt-5.3-codex",
+            "gpt-5.4",  # Added in SDK v0.1.32
         }
 
         models = await live_provider.list_models()

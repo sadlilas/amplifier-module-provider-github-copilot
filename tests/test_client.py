@@ -91,8 +91,8 @@ class TestCopilotClientWrapper:
             async with client_wrapper.create_session("claude-opus-4.5") as session:
                 assert session.session_id == "test-session-123"
 
-            # Session should be destroyed after context
-            mock_copilot_session.destroy.assert_called_once()
+            # Session should be disconnected after context (SDK 0.1.32+)
+            mock_copilot_session.disconnect.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_create_session_with_system_message(
@@ -544,14 +544,14 @@ class TestExceptionPassthrough:
                 async with wrapper.create_session("model"):
                     raise CustomError("User code error")
 
-            # Session should still be destroyed
-            mock_copilot_session.destroy.assert_called_once()
+            # Session should still be disconnected (SDK 0.1.32+)
+            mock_copilot_session.disconnect.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_session_destroy_called_on_any_exit(
+    async def test_session_disconnect_called_on_any_exit(
         self, mock_copilot_client, mock_copilot_session
     ):
-        """Session should be destroyed on normal exit, exception, or cancellation."""
+        """Session should be disconnected on normal exit, exception, or cancellation."""
         wrapper = CopilotClientWrapper(config={}, timeout=60.0)
         mock_copilot_client.create_session = AsyncMock(return_value=mock_copilot_session)
 
@@ -562,9 +562,9 @@ class TestExceptionPassthrough:
             # Normal exit
             async with wrapper.create_session("model"):
                 pass
-            assert mock_copilot_session.destroy.call_count == 1
+            assert mock_copilot_session.disconnect.call_count == 1
 
-            mock_copilot_session.destroy.reset_mock()
+            mock_copilot_session.disconnect.reset_mock()
 
             # Exception exit
             try:
@@ -572,7 +572,7 @@ class TestExceptionPassthrough:
                     raise ValueError("test")
             except ValueError:
                 pass
-            assert mock_copilot_session.destroy.call_count == 1
+            assert mock_copilot_session.disconnect.call_count == 1
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1777,11 +1777,21 @@ class TestAuthenticationVerification:
         await client_wrapper._verify_authentication()
 
 
-class TestSessionDestroyErrorHandling:
-    """Tests for session destroy error handling.
+# ═══════════════════════════════════════════════════════════════════════════════
+# SDK 0.1.32 Migration Tests - HOTFIX v1.0.4
+# ═══════════════════════════════════════════════════════════════════════════════
 
-    Coverage for client.py lines 558-560: Exception during session.destroy()
-    should be logged but not re-raised to avoid masking the original exception.
+
+class TestSdk032DisconnectMigration:
+    """Tests verifying SDK 0.1.32 migration from destroy() to disconnect().
+
+    HOTFIX v1.0.4: SDK 0.1.32 deprecated session.destroy() in favor of
+    session.disconnect(). These tests ensure:
+    1. We call disconnect(), not destroy()
+    2. The migration is complete and correct
+    3. No deprecated API calls remain
+
+    See: mydocs/cli-sdk-analysis/hotfix-2026-03-07-sdk032/HOTFIX-v1.0.4-SDK032.md
     """
 
     @pytest.fixture
@@ -1790,14 +1800,111 @@ class TestSessionDestroyErrorHandling:
         return CopilotClientWrapper(config={}, timeout=60.0)
 
     @pytest.mark.asyncio
-    async def test_session_destroy_error_logged_not_raised(
+    async def test_disconnect_called_not_destroy(
+        self, client_wrapper, mock_copilot_client, mock_copilot_session
+    ):
+        """SDK 0.1.32: session.disconnect() must be called, NOT deprecated destroy()."""
+        # Add destroy mock to verify it's NOT called
+        mock_copilot_session.destroy = AsyncMock()
+        mock_copilot_session.disconnect = AsyncMock()
+
+        mock_copilot_client.create_session = AsyncMock(return_value=mock_copilot_session)
+
+        with patch(
+            "copilot.CopilotClient",
+            return_value=mock_copilot_client,
+        ):
+            async with client_wrapper.create_session("gpt-4"):
+                pass
+
+        # CRITICAL: disconnect() called, destroy() NOT called
+        mock_copilot_session.disconnect.assert_called_once()
+        mock_copilot_session.destroy.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_disconnect_called_on_exception(
+        self, client_wrapper, mock_copilot_client, mock_copilot_session
+    ):
+        """SDK 0.1.32: disconnect() called even when user code raises exception."""
+        mock_copilot_session.destroy = AsyncMock()
+        mock_copilot_session.disconnect = AsyncMock()
+        mock_copilot_client.create_session = AsyncMock(return_value=mock_copilot_session)
+
+        with patch(
+            "copilot.CopilotClient",
+            return_value=mock_copilot_client,
+        ):
+            with pytest.raises(ValueError, match="user error"):
+                async with client_wrapper.create_session("gpt-4"):
+                    raise ValueError("user error")
+
+        # disconnect() called in finally block
+        mock_copilot_session.disconnect.assert_called_once()
+        mock_copilot_session.destroy.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_disconnect_failure_does_not_mask_user_exception(
+        self, client_wrapper, mock_copilot_client, mock_copilot_session
+    ):
+        """SDK 0.1.32: disconnect() failure must not mask user's original exception."""
+        mock_copilot_session.disconnect = AsyncMock(side_effect=RuntimeError("cleanup failed"))
+        mock_copilot_client.create_session = AsyncMock(return_value=mock_copilot_session)
+
+        with patch(
+            "copilot.CopilotClient",
+            return_value=mock_copilot_client,
+        ):
+            # User exception should propagate, not disconnect's RuntimeError
+            with pytest.raises(ValueError, match="original error"):
+                async with client_wrapper.create_session("gpt-4"):
+                    raise ValueError("original error")
+
+    @pytest.mark.asyncio
+    async def test_disconnect_failure_logged_on_normal_exit(
+        self, client_wrapper, mock_copilot_client, mock_copilot_session, caplog
+    ):
+        """SDK 0.1.32: disconnect() failure on normal exit should be logged, not raised."""
+        mock_copilot_session.session_id = "test-session-123"
+        mock_copilot_session.disconnect = AsyncMock(side_effect=RuntimeError("network error"))
+        mock_copilot_client.create_session = AsyncMock(return_value=mock_copilot_session)
+
+        import logging
+
+        with patch(
+            "copilot.CopilotClient",
+            return_value=mock_copilot_client,
+        ):
+            with caplog.at_level(logging.WARNING):
+                # Normal exit - should NOT raise despite disconnect failure
+                async with client_wrapper.create_session("gpt-4"):
+                    pass  # No exception from user code
+
+        # Warning should be logged
+        assert "Error disconnecting session" in caplog.text or "network error" in caplog.text
+
+
+class TestSessionDisconnectErrorHandling:
+    """Tests for session disconnect error handling.
+
+    Coverage for client.py lines 598-604: Exception during session.disconnect()
+    should be logged but not re-raised to avoid masking the original exception.
+    (Note: SDK 0.1.32+ uses disconnect() instead of destroy())
+    """
+
+    @pytest.fixture
+    def client_wrapper(self):
+        """Create fresh client wrapper for testing."""
+        return CopilotClientWrapper(config={}, timeout=60.0)
+
+    @pytest.mark.asyncio
+    async def test_session_disconnect_error_logged_not_raised(
         self, client_wrapper, mock_copilot_client, caplog
     ):
-        """Session destroy exception should be logged but not mask caller exceptions."""
-        # Create mock session that fails on destroy
+        """Session disconnect exception should be logged but not mask caller exceptions."""
+        # Create mock session that fails on disconnect
         mock_session = AsyncMock()
         mock_session.session_id = "test-session"
-        mock_session.destroy = AsyncMock(side_effect=RuntimeError("Destroy failed"))
+        mock_session.disconnect = AsyncMock(side_effect=RuntimeError("Disconnect failed"))
 
         # Mock create_session to return the mock session
         mock_copilot_client.create_session = AsyncMock(return_value=mock_session)
@@ -1809,23 +1916,23 @@ class TestSessionDestroyErrorHandling:
             import logging
 
             with caplog.at_level(logging.WARNING):
-                # Use the session - destroy should fail silently
+                # Use the session - disconnect should fail silently
                 async with client_wrapper.create_session("model"):
                     pass  # Normal usage
 
-        # Session destroy should have been called
-        mock_session.destroy.assert_called_once()
+        # Session disconnect should have been called
+        mock_session.disconnect.assert_called_once()
         # Warning should be logged
-        assert "Error destroying session" in caplog.text or "Destroy failed" in caplog.text
+        assert "Error disconnecting session" in caplog.text or "Disconnect failed" in caplog.text
 
     @pytest.mark.asyncio
-    async def test_session_destroy_error_does_not_mask_caller_exception(
+    async def test_session_disconnect_error_does_not_mask_caller_exception(
         self, client_wrapper, mock_copilot_client
     ):
-        """If caller raises exception, session destroy error should not mask it."""
+        """If caller raises exception, session disconnect error should not mask it."""
         mock_session = AsyncMock()
         mock_session.session_id = "test-session"
-        mock_session.destroy = AsyncMock(side_effect=RuntimeError("Destroy failed"))
+        mock_session.disconnect = AsyncMock(side_effect=RuntimeError("Disconnect failed"))
 
         mock_copilot_client.create_session = AsyncMock(return_value=mock_session)
 
@@ -1837,7 +1944,7 @@ class TestSessionDestroyErrorHandling:
                 async with client_wrapper.create_session("model"):
                     raise ValueError("User error")  # Simulate user code error
 
-        # The user error should propagate, not the destroy error
+        # The user error should propagate, not the disconnect error
 
 
 class TestListModelsCoverageGaps:
@@ -2089,7 +2196,7 @@ class TestBrokenPipeAndLockTimeout:
         """
         mock_session = AsyncMock()
         mock_session.session_id = "test-session-broken-pipe"
-        mock_session.destroy = AsyncMock()
+        mock_session.disconnect = AsyncMock()  # SDK 0.1.32+ uses disconnect()
         mock_session.send_and_wait = AsyncMock(side_effect=BrokenPipeError("Broken pipe"))
         mock_copilot_client.create_session = AsyncMock(return_value=mock_session)
         mock_copilot_client.ping = AsyncMock()

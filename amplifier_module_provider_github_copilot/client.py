@@ -135,7 +135,7 @@ class CopilotClientWrapper:
 
     Pattern A Implementation:
     - Each session is ephemeral (created per complete() call)
-    - Sessions are destroyed after use
+    - Sessions are disconnected after use (SDK 0.1.32+)
     - Amplifier maintains all conversation state externally
 
     Attributes:
@@ -437,7 +437,7 @@ class CopilotClientWrapper:
         Create an ephemeral Copilot session.
 
         This is the key to Pattern A: Stateless Provider.
-        Each session is short-lived and destroyed after use.
+        Each session is short-lived and disconnected after use (SDK 0.1.32+).
         Amplifier maintains all conversation state externally.
 
         Args:
@@ -593,15 +593,16 @@ class CopilotClientWrapper:
         try:
             yield session
         finally:
-            # Always destroy the session to clean up
+            # Always disconnect the session to clean up
+            # Note: SDK 0.1.32+ deprecated destroy(), use disconnect() instead
             if session is not None:
                 try:
-                    await session.destroy()
-                    logger.debug(f"[CLIENT] Session destroyed: {session.session_id}")
-                except Exception as destroy_error:
+                    await session.disconnect()
+                    logger.debug(f"[CLIENT] Session disconnected: {session.session_id}")
+                except Exception as disconnect_error:
                     # Log but don't raise - don't mask the original exception
                     logger.warning(
-                        f"[CLIENT] Error destroying session {session.session_id}: {destroy_error}"
+                        f"[CLIENT] Error disconnecting session {session.session_id}: {disconnect_error}"
                     )
 
     async def send_and_wait(
