@@ -23,8 +23,10 @@ class TestDenyAllConstant:
         assert DENY_ALL is not None
 
     def test_deny_all_has_required_keys(self) -> None:
-        """DENY_ALL constant has permissionDecision and permissionDecisionReason."""
+        """DENY_ALL constant has permissionDecision, reason, and suppressOutput."""
         from amplifier_module_provider_github_copilot.sdk_adapter.client import DENY_ALL
 
         assert DENY_ALL["permissionDecision"] == "deny"
-        assert "Amplifier" in DENY_ALL["permissionDecisionReason"]
+        # Minimal reason strategy - don't teach model tools are blocked
+        assert DENY_ALL["permissionDecisionReason"] == "Processing"
+        assert DENY_ALL["suppressOutput"] is True

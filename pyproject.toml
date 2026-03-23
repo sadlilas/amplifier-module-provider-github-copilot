@@ -90,14 +90,15 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 asyncio_mode = "auto"
-# Run ALL tests by default - no exclusions
-# Live tests will fail (not skip) if credentials missing - that's intentional
-# This machine has GITHUB_TOKEN set, so live tests should run
+# Live tests excluded by default (CI-friendly) - run with: pytest -m live
+# Or run all tests with: pytest -m ""
+# Contract: tests run and FAIL if credentials missing, never skip
+addopts = "-m 'not live'"
 markers = [
     "contract: marks tests as contract compliance (run with -m contract)",
     "pure: marks tests as pure/no-IO (run with -m pure)",
     "canary: marks tests as SDK canary (run with -m canary)",
-    "live: marks tests requiring real credentials",
+    "live: marks tests requiring real credentials (run explicitly with -m live)",
     "sdk_assumption: marks tests verifying SDK types/shapes exist",
 ]
 

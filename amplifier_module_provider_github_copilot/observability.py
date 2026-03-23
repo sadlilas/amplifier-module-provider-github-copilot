@@ -95,18 +95,36 @@ def load_observability_config() -> ObservabilityConfig:
     """Load observability policy from config/observability.yaml.
 
     Config lives inside the wheel at amplifier_module_provider_github_copilot/config/
+    Uses importlib.resources for installed wheel, falls back to filesystem for dev.
 
     Returns default config on error (graceful degradation per contract).
     """
-    config_path = Path(__file__).parent / "config" / "observability.yaml"
+    yaml_text: str | None = None
 
-    if not config_path.exists():
-        logger.warning("[OBSERVABILITY] Config file not found: %s. Using defaults.", config_path)
+    # Try importlib.resources first (installed wheel scenario)
+    try:
+        from importlib import resources
+
+        config_files = resources.files("amplifier_module_provider_github_copilot.config")
+        config_file = config_files.joinpath("observability.yaml")
+        yaml_text = config_file.read_text(encoding="utf-8")
+    except (ModuleNotFoundError, FileNotFoundError, TypeError):
+        # Fall back to filesystem path (dev scenario)
+        config_path = Path(__file__).parent / "config" / "observability.yaml"
+        if config_path.exists():
+            yaml_text = config_path.read_text(encoding="utf-8")
+        else:
+            logger.warning(
+                "[OBSERVABILITY] Config not found via importlib.resources or path. "
+                "Using defaults."
+            )
+            return _default_observability_config()
+
+    if not yaml_text:
         return _default_observability_config()
 
     try:
-        with config_path.open(encoding="utf-8") as f:
-            data = yaml.safe_load(f)
+        data = yaml.safe_load(yaml_text)
 
         if not data:
             return _default_observability_config()

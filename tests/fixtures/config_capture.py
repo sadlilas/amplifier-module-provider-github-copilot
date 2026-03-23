@@ -93,5 +93,5 @@ class ConfigCapturingMock:
         return self.captured_configs[-1]
 
     def assert_hook_registered(self) -> None:
-        """Assert that register_pre_tool_use_hook was called exactly once."""
+        """Assert that an event handler was registered via session.on() exactly once."""
         self._mock_session._hook_mock.assert_called_once()

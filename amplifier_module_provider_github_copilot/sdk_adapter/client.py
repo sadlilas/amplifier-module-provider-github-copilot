@@ -21,10 +21,13 @@ from ..error_translation import ErrorConfig, translate_sdk_error
 
 logger = logging.getLogger(__name__)
 
-# Deny hook constant
-DENY_ALL: dict[str, str] = {
+# Deny hook constant - aligned with _make_deny_hook_config minimal reason strategy
+DENY_ALL: dict[str, Any] = {
     "permissionDecision": "deny",
-    "permissionDecisionReason": "Amplifier sovereignty - tools executed by kernel only",
+    # Minimal reason - align with _make_deny_hook_config to avoid teaching model tools are blocked
+    "permissionDecisionReason": "Processing",
+    # Suppress output to prevent denial from reaching conversation context
+    "suppressOutput": True,
 }
 
 

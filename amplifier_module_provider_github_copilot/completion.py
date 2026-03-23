@@ -19,6 +19,7 @@ from typing import Any, cast
 from .config_loader import (
     load_models_config,
     load_sdk_protection_config,
+    load_streaming_config,
 )
 from .error_translation import (
     ErrorConfig,
@@ -130,7 +131,11 @@ async def complete(
                 )
 
             # Use send() + on() pattern for streaming
-            event_queue: asyncio.Queue[Any] = asyncio.Queue()
+            # Contract: behaviors:Streaming:MUST:1 - bounded queue from YAML policy
+            streaming_config = load_streaming_config()
+            event_queue: asyncio.Queue[Any] = asyncio.Queue(
+                maxsize=streaming_config.event_queue_size
+            )
             idle_event = asyncio.Event()
 
             # Load SDK protection config for tool capture and session management
@@ -150,14 +155,27 @@ async def complete(
 
                 Tool capture delegated to ToolCaptureHandler.
                 Contract: streaming-contract:abort-on-capture:MUST:1
+                Contract: behaviors:Streaming:MUST:1 - bounded queue, drop on full
                 """
-                event_queue.put_nowait(sdk_event)
-                # Use helper to extract type from dict or object events
+                # ALWAYS check for idle event first - critical for session completion
                 event_type = extract_event_type(sdk_event)
                 if is_idle_event(event_type):
                     idle_event.set()
-                else:
-                    # Delegate tool capture to handler
+                    # Still try to queue it for completeness
+
+                try:
+                    event_queue.put_nowait(sdk_event)
+                except asyncio.QueueFull:
+                    # Bounded queue full - drop event and log warning
+                    # This prevents unbounded memory growth under SDK misbehavior
+                    logger.warning(
+                        "[STREAMING] Event queue full, dropping event: %s",
+                        event_type,
+                    )
+                    return  # Don't process dropped events further
+
+                # Delegate tool capture to handler (for non-idle events)
+                if not is_idle_event(event_type):
                     tool_capture_handler.on_event(sdk_event)
 
             # Register event handler

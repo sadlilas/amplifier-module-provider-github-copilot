@@ -168,7 +168,9 @@ class TestDenyHookInClient:
         from amplifier_module_provider_github_copilot.sdk_adapter.client import DENY_ALL
 
         assert DENY_ALL["permissionDecision"] == "deny"
-        assert "Amplifier" in DENY_ALL["permissionDecisionReason"]
+        # Minimal reason strategy - don't teach model tools are blocked
+        assert DENY_ALL["permissionDecisionReason"] == "Processing"
+        assert DENY_ALL["suppressOutput"] is True
 
     def test_make_deny_hook_config_is_replacement(self) -> None:
         """_make_deny_hook_config() is the canonical replacement for create_deny_hook()."""

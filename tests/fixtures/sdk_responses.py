@@ -3,7 +3,7 @@
 Contract: contracts/sdk-response.md
 
 These fixtures provide realistic SDK response shapes matching
-`github-copilot-sdk` version 0.1.32+.
+`github-copilot-sdk` version 0.2.0+.
 
 IMPORTANT: These fixtures MUST match the actual SDK response structure.
 When the SDK changes, update these fixtures and run the canary tests.
@@ -19,7 +19,7 @@ class MockData:
 
     This is the shape returned by sdk_session.send_and_wait().
 
-    SDK Version: 0.1.32+
+    SDK Version: 0.2.0+
     """
 
     content: str

@@ -67,8 +67,10 @@ class CompletionRequest:
 
     prompt: str
     model: str | None = None
-    tools: list[dict[str, Any]] = field(default_factory=lambda: [])
-    attachments: list[dict[str, Any]] = field(default_factory=lambda: [])
+    # Note: Using default_factory=list is conventional but pyright strict requires annotation.
+    # Using explicit factory cast for type safety.
+    tools: list[dict[str, Any]] = field(default_factory=list)  # type: ignore[misc]
+    attachments: list[dict[str, Any]] = field(default_factory=list)  # type: ignore[misc]
     max_tokens: int | None = None
     temperature: float | None = None
 
