@@ -616,15 +616,17 @@ class TestLoggingConfigFromYaml:
     """
 
     def test_logging_config_defaults(self) -> None:
-        """LoggingConfig has sensible defaults.
+        """LoggingConfig has secure defaults.
 
         Contract: behaviors:Config:MUST:1
+        C4 Fix: log_response_text defaults to False (secure - don't log PII).
         """
         from amplifier_module_provider_github_copilot.fake_tool_detection import LoggingConfig
 
         config = LoggingConfig()
         assert config.log_matched_pattern is True
-        assert config.log_response_text is True
+        # C4 Fix: Secure default is False - LLM responses may contain PII/secrets
+        assert config.log_response_text is False
         assert config.log_response_text_limit == 500
         assert config.log_tool_calls is True
         assert config.log_correction_message is True

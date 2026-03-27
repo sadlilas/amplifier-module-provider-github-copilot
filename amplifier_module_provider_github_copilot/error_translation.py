@@ -454,6 +454,9 @@ def translate_sdk_error(
 
             # Extract context from message (use original for pattern matching)
             context = _extract_context(original_message, mapping.context_extraction)
+            # P0 Fix (C3): Redact extracted context values - they come from the
+            # original (unredacted) message and may contain secrets like tokens.
+            context = {k: redact_sensitive_text(v) for k, v in context.items()}
             # Use redacted message for output, append context
             message = safe_message + _format_context_suffix(context)
 

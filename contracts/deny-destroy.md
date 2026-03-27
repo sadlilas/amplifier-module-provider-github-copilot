@@ -1,11 +1,12 @@
 # Contract: Deny + Destroy Pattern
 
 ## Version
-- **Current:** 1.2 (ToolSuppression-Corrected)
+- **Current:** 1.3 (NoTools-Clarified)
 - **Module Reference:** amplifier_module_provider_github_copilot/sdk_adapter/client.py
 - **Status:** Non-Negotiable Constraint
 - **History:**
-  - **1.2** — Fixed ToolSuppression: removed incorrect `available_tools=[]` claim, documented `overrides_built_in_tool=True` approach
+  - **1.3** — Clarified ToolSuppression: `available_tools=[]` required when NO tools provided, allowlist when tools provided
+  - **1.2** — Fixed ToolSuppression for WITH-tools case: documented `overrides_built_in_tool=True` approach
   - **1.1** — Fixed path from `modules/provider-core/session_factory.py` to actual location
 
 ---
@@ -123,8 +124,9 @@ From GOLDEN_VISION_V2.md:
 
 | Anchor | Clause |
 |--------|--------|
-| `deny-destroy:ToolSuppression:MUST:1` | available_tools set to Amplifier tool names (allowlist) |
+| `deny-destroy:ToolSuppression:MUST:1` | available_tools set to Amplifier tool names (allowlist) when tools provided |
 | `deny-destroy:ToolSuppression:MUST:2` | overrides_built_in_tool=True (see sdk-boundary:ToolForwarding:MUST:2) |
+| `deny-destroy:ToolSuppression:MUST:3` | available_tools=[] when NO Amplifier tools provided (blocks SDK built-ins) |
 
 ### Allowlist
 

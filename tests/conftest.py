@@ -4,18 +4,27 @@ Provides fixtures for Tier 6 (SDK assumption tests) and Tier 7 (live smoke tests
 
 All fixtures are typed for pyright strict mode compliance.
 Windows event loop policy configured for asyncio subprocess compatibility.
+
+P1-6 Security Fix: SKIP_SDK_CHECK is now guarded by _is_pytest_running() in
+__init__.py and _imports.py, making it safe to use in tests while preventing
+production misuse.
 """
 
 from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Generator
 from typing import TYPE_CHECKING, Any
 
 import pytest
 
+# P1-6 Security: SKIP_SDK_CHECK is guarded by _is_pytest_running() in production code.
+# This allows tests to run without the SDK while preventing production misuse.
+os.environ["SKIP_SDK_CHECK"] = "1"
+
 # Store original function before any test patches run
-import amplifier_module_provider_github_copilot.models as _models_module
+import amplifier_module_provider_github_copilot.models as _models_module  # noqa: E402
 
 _original_fetch_and_map_models = _models_module.fetch_and_map_models
 
@@ -26,9 +35,6 @@ if sys.platform == "win32":
     import asyncio
 
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-
-# Allow test imports without SDK installed - tests use skip markers for SDK tests
-os.environ["SKIP_SDK_CHECK"] = "1"
 
 # P1-6 Security Fix: Clear GitHub token env vars for non-live tests.
 # This prevents the fail-closed security behavior from triggering when
@@ -217,9 +223,6 @@ def sdk_module() -> Any:
     Use this for Tier 6 tests that need SDK types but not a running client.
     """
     return pytest.importorskip("copilot", reason="github-copilot-sdk not installed")
-
-
-from collections.abc import Generator
 
 
 @pytest.fixture

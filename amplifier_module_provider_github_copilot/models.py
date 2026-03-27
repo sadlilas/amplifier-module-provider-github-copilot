@@ -66,11 +66,11 @@ from amplifier_module_provider_github_copilot.config_loader import (
 )
 
 # =============================================================================
-# Re-export from sdk_adapter for backward compatibility
-# The actual implementation is now in sdk_adapter/model_translation.py
+# Re-export from sdk_adapter membrane (NOT direct module import)
+# R6 Fix: Import via membrane __init__.py, not bypassing to model_translation.py
 # Contract: sdk-boundary:ModelDiscovery:MUST:2
 # =============================================================================
-from .sdk_adapter.model_translation import (  # noqa: E402
+from .sdk_adapter import (  # noqa: E402
     CopilotModelInfo,
     sdk_model_to_copilot_model,
 )

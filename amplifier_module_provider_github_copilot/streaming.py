@@ -596,11 +596,13 @@ def extract_response_content(response: Any, _depth: int = 0) -> str:
     if _depth > _MAX_EXTRACTION_DEPTH:
         return ""
 
-    # Check for .data wrapper first (response.data -> Data object)
-    if hasattr(response, "data"):
+    # P0 Fix (C1): Added null guard to .data check. Previous code recursed into
+    # .data even when None, returning "" silently when .content was valid.
+    # SDK design: .data wraps a nested Data object with .content - unwrap first.
+    if hasattr(response, "data") and response.data is not None:
         return extract_response_content(response.data, _depth + 1)
 
-    # Check for Data object with .content attribute
+    # Fall back to direct .content if .data doesn't exist or is None
     if hasattr(response, "content"):
         content = response.content  # type: ignore[union-attr]
         return str(content) if content is not None else ""

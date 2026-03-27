@@ -55,15 +55,28 @@ if _os_logging.environ.get("GHCP_DEBUG"):
 # Using importlib.metadata avoids importing the SDK itself at module load time.
 # Contract: sdk-boundary.md MUST:5
 #
-# TESTING: Set SKIP_SDK_CHECK=1 to allow test imports without SDK installed.
-# Tests use pytest.importorskip() and skip markers to handle SDK availability.
+# P1-6 Security Fix: SDK check bypass only allowed in pytest context.
+# The env var alone is not sufficient - pytest must be loaded in sys.modules.
+# This prevents production misuse while preserving test functionality.
 import asyncio
 import os as _os
+import sys as _sys
 import threading
 from importlib.metadata import PackageNotFoundError as _PkgNotFoundError
 from importlib.metadata import version as _pkg_version
 
-if not _os.environ.get("SKIP_SDK_CHECK"):
+
+def _is_pytest_running() -> bool:
+    """Check if pytest is running (for test-only SDK check bypass)."""
+    return "pytest" in _sys.modules
+
+
+# Only skip SDK check if BOTH conditions are met:
+# 1. SKIP_SDK_CHECK env var is set
+# 2. pytest is actually running (prevents production misuse)
+_skip_sdk_check = _os.environ.get("SKIP_SDK_CHECK") and _is_pytest_running()
+
+if not _skip_sdk_check:
     try:
         _pkg_version("github-copilot-sdk")
     except _PkgNotFoundError as _e:
@@ -72,15 +85,17 @@ if not _os.environ.get("SKIP_SDK_CHECK"):
             "Install with:  pip install 'github-copilot-sdk>=0.2.0,<0.3.0'"
         ) from _e
 
-from collections.abc import Awaitable, Callable
-from typing import Any
+# E402: These imports are intentionally after SDK check - we verify SDK
+# installation before importing modules that depend on it (Three-Medium).
+from collections.abc import Awaitable, Callable  # noqa: E402
+from typing import Any  # noqa: E402
 
-from amplifier_core import ModelInfo, ModuleCoordinator, ProviderInfo
+from amplifier_core import ModelInfo, ModuleCoordinator, ProviderInfo  # noqa: E402
 
-from .provider import GitHubCopilotProvider
+from .provider import GitHubCopilotProvider  # noqa: E402
 
 # Contract: sdk-boundary:Membrane:MUST:1 — import from sdk_adapter package, not submodules
-from .sdk_adapter import CopilotClientWrapper
+from .sdk_adapter import CopilotClientWrapper  # noqa: E402
 
 __version__ = "2.0.0"
 

@@ -14,6 +14,7 @@ Contract: contracts/sdk-boundary.md
 from __future__ import annotations
 
 import os
+import sys
 from typing import Any
 
 # Re-export SDK-independent utilities for backward compatibility.
@@ -24,10 +25,20 @@ from ._spec_utils import get_copilot_spec_origin
 # SDK imports - THE ONLY PLACE IN THE CODEBASE where SDK is imported
 # =============================================================================
 
-# TESTING: Set SKIP_SDK_CHECK=1 to allow imports without SDK installed.
-# Tests use pytest.importorskip() and skip markers to handle SDK availability.
-# This matches the pattern in __init__.py for consistent test behavior.
-_SKIP_SDK_CHECK = os.environ.get("SKIP_SDK_CHECK")
+
+def _is_pytest_running() -> bool:
+    """Check if pytest is running (for test-only SDK bypass).
+
+    P1-6 Security Fix: SDK bypass only allowed when pytest is actually running.
+    This prevents production misuse while preserving test functionality.
+    """
+    return "pytest" in sys.modules
+
+
+# Only skip SDK imports if BOTH conditions are met:
+# 1. SKIP_SDK_CHECK env var is set
+# 2. pytest is actually running (prevents production misuse)
+_SKIP_SDK_CHECK = os.environ.get("SKIP_SDK_CHECK") and _is_pytest_running()
 
 # Guard against import failures - fail fast with clear error
 # Unless SKIP_SDK_CHECK is set (for testing without SDK)

@@ -33,7 +33,9 @@ class LoggingConfig:
     """Logging configuration for fake tool call detection."""
 
     log_matched_pattern: bool = True
-    log_response_text: bool = True
+    # P1 Fix (C4): Secure default matches YAML (false). If YAML fails to load,
+    # we fail closed (don't log potentially sensitive LLM response text).
+    log_response_text: bool = False
     log_response_text_limit: int = 500
     log_tool_calls: bool = True
     log_correction_message: bool = True
