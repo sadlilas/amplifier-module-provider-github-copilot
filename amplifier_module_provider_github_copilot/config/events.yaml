@@ -101,13 +101,15 @@ event_classifications:
     - unknown
 
 finish_reason_map:
-  end_turn: STOP
-  stop: STOP
-  tool_use: TOOL_USE
-  max_tokens: LENGTH
-  content_filter: CONTENT_FILTER
-  "": STOP  # SDK often sends empty/missing finish_reason for normal completion
-  _default: STOP  # Normal completion when SDK doesn't specify
+  # Values MUST be lowercase to match amplifier-core proto:
+  #   "stop", "tool_calls", "length", "content_filter"
+  end_turn: stop
+  stop: stop
+  tool_use: tool_calls
+  max_tokens: length
+  content_filter: content_filter
+  "": stop  # SDK often sends empty/missing finish_reason for normal completion
+  _default: stop  # Normal completion when SDK doesn't specify
 
 # Session lifecycle event classification
 # Used by event_helpers.py for SDK event type detection

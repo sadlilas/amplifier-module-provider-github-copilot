@@ -272,12 +272,14 @@ async def mount(
         from .security_redaction import redact_sensitive_text
 
         logger.error("[MOUNT] Failed to acquire shared client: %s", redact_sensitive_text(e))
-        return None
+        # P2 Fix: Raise instead of return None — framework must distinguish failure from opt-out.
+        raise
     except Exception as e:
         from .security_redaction import redact_sensitive_text
 
         logger.error("[MOUNT] Error acquiring shared client: %s", redact_sensitive_text(e))
-        return None
+        # P2 Fix: Raise instead of return None — framework must distinguish failure from opt-out.
+        raise
 
     try:
         logger.info("[MOUNT] Creating GitHubCopilotProvider...")
@@ -312,7 +314,33 @@ async def mount(
         )
         # Full traceback at DEBUG level only (security: avoid leaking sensitive data)
         logger.debug("[MOUNT] Mount failure traceback", exc_info=True)
-        return None
+        # P2 Fix: Raise instead of return None — framework must distinguish failure from opt-out.
+        raise
 
 
 __all__ = ["mount", "GitHubCopilotProvider", "ProviderInfo", "ModelInfo"]
+
+
+# =============================================================================
+# Deprecation Shims for v2.0.0 Migration
+# =============================================================================
+# Provides helpful ImportError messages when users import symbols removed in v2.0.0.
+# Contract: Follows Amplifier ecosystem's "additive evolution" philosophy.
+# See MIGRATION.md for complete migration guide.
+
+
+def __getattr__(name: str) -> None:
+    """Raise ImportError with helpful migration message for removed v1.x symbols.
+
+    This enables users upgrading from v1.x to get clear guidance on replacements
+    instead of a generic "cannot import name" error.
+
+    Example:
+        >>> from amplifier_module_provider_github_copilot import CopilotSdkProvider
+        ImportError: CopilotSdkProvider was removed in v2.0.0. Use GitHubCopilotProvider instead.
+    """
+    from ._deprecated import REMOVED_SYMBOLS
+
+    if name in REMOVED_SYMBOLS:
+        raise ImportError(REMOVED_SYMBOLS[name])
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

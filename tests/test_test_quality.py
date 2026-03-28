@@ -31,16 +31,18 @@ class MockSubprocessConfig:
 
 
 class TestMountFailurePath:
-    """DETest mount() exception → returns None path.
+    """Test mount() exception paths raise properly (P2 Fix).
 
     Contract: sdk-boundary.md - mount lifecycle
+    P2 Fix: mount() raises on failure so framework can distinguish failure from opt-out.
     """
 
     @pytest.mark.asyncio
-    async def test_mount_returns_none_on_provider_init_failure(self) -> None:
-        """mount() returns None when GitHubCopilotProvider.__init__ fails.
+    async def test_mount_raises_on_provider_init_failure(self) -> None:
+        """mount() raises when GitHubCopilotProvider.__init__ fails.
 
-        Contract: sdk-boundary.md - graceful degradation on init failure
+        Contract: sdk-boundary.md - fail-fast on init failure
+        P2 Fix: Raise instead of return None.
         """
         from amplifier_module_provider_github_copilot import mount
 
@@ -52,30 +54,30 @@ class TestMountFailurePath:
             "amplifier_module_provider_github_copilot.GitHubCopilotProvider",
             side_effect=RuntimeError("Simulated provider init failure"),
         ):
-            result = await mount(coordinator, config=None)
-
-        assert result is None
+            with pytest.raises(RuntimeError, match="Simulated provider init failure"):
+                await mount(coordinator, config=None)
 
     @pytest.mark.asyncio
-    async def test_mount_returns_none_on_coordinator_mount_exception(self) -> None:
-        """mount() returns None when coordinator.mount() raises.
+    async def test_mount_raises_on_coordinator_mount_exception(self) -> None:
+        """mount() raises when coordinator.mount() raises.
 
-        Contract: sdk-boundary.md - graceful degradation
+        Contract: sdk-boundary.md - propagate failures
+        P2 Fix: Raise instead of return None.
         """
         from amplifier_module_provider_github_copilot import mount
 
         coordinator = MagicMock()
         coordinator.mount = AsyncMock(side_effect=RuntimeError("Coordinator error"))
 
-        result = await mount(coordinator, config=None)
-
-        assert result is None
+        with pytest.raises(RuntimeError, match="Coordinator error"):
+            await mount(coordinator, config=None)
 
     @pytest.mark.asyncio
     async def test_mount_logs_error_on_failure(self, caplog: pytest.LogCaptureFixture) -> None:
-        """mount() logs error when initialization fails.
+        """mount() logs error before raising when initialization fails.
 
         Contract: sdk-boundary.md - observability
+        P2 Fix: Log then raise (not return None).
         """
         from amplifier_module_provider_github_copilot import mount
 
@@ -83,9 +85,9 @@ class TestMountFailurePath:
         coordinator.mount = AsyncMock(side_effect=ValueError("Test error"))
 
         with caplog.at_level(logging.ERROR):
-            result = await mount(coordinator, config=None)
+            with pytest.raises(ValueError, match="Test error"):
+                await mount(coordinator, config=None)
 
-        assert result is None
         # Check that error was logged
         assert any("[MOUNT] Failed" in record.message for record in caplog.records)
 

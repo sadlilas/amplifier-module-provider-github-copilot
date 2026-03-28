@@ -170,7 +170,8 @@ class EventRouter:
             return  # Error events handled separately - don't queue (prevents orphan)
 
         # 4. Tool capture (CRITICAL - must not be skipped)
-        if not is_idle and not is_err:
+        # P2 Fix: Exclude usage events — they don't contain tool data.
+        if not is_idle and not is_err and not is_usage:
             self._capture_handler.on_event(sdk_event)
 
         # ═══════════════════════════════════════════════════════════════

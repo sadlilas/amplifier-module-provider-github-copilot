@@ -248,7 +248,8 @@ class StreamingAccumulator:
             normalized_finish_reason = "tool_calls"
         elif not self.finish_reason:
             # No tool calls and no SDK finish_reason: normal completion
-            normalized_finish_reason = "end_turn"
+            # Use "stop" per amplifier-core proto (not "end_turn" which is an SDK input key)
+            normalized_finish_reason = "stop"
         else:
             # No tool calls but SDK provided finish_reason: preserve it
             normalized_finish_reason = self.finish_reason

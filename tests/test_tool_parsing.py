@@ -619,17 +619,18 @@ class TestLoggingConfigFromYaml:
         """LoggingConfig has secure defaults.
 
         Contract: behaviors:Config:MUST:1
-        C4 Fix: log_response_text defaults to False (secure - don't log PII).
+        P1 Fix: All sensitive logging defaults to False (fail-closed security).
+        If YAML fails to load, we don't inadvertently log secrets.
         """
         from amplifier_module_provider_github_copilot.fake_tool_detection import LoggingConfig
 
         config = LoggingConfig()
-        assert config.log_matched_pattern is True
-        # C4 Fix: Secure default is False - LLM responses may contain PII/secrets
-        assert config.log_response_text is False
+        assert config.log_matched_pattern is True  # Safe - no user content
+        # P1 Fix: Secure defaults - all potentially sensitive fields are False
+        assert config.log_response_text is False  # LLM responses may contain PII
         assert config.log_response_text_limit == 500
-        assert config.log_tool_calls is True
-        assert config.log_correction_message is True
+        assert config.log_tool_calls is False  # Tool arguments may contain secrets
+        assert config.log_correction_message is False  # Correction may reveal context
         assert config.level_on_detection == "INFO"
         assert config.level_on_retry == "INFO"
         assert config.level_on_success == "INFO"
@@ -728,19 +729,27 @@ max_correction_attempts: 3
         assert len(config.patterns) > 0
         assert config.max_correction_attempts == 2
 
-    def test_config_with_yaml_error_uses_defaults(
+    def test_config_with_yaml_error_raises(
         self, tmp_path: pytest.TempPathFactory, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """Invalid YAML returns defaults with warning.
+        """Invalid YAML raises YAMLError (P3 Fix: no cache poisoning).
 
         Contract: behaviors:Config:MUST:1
+        P3 Fix: Re-raise prevents lru_cache from caching failure result.
+        Three-Medium Architecture: YAML errors should fail-fast, not silently degrade.
         """
         import logging
         from pathlib import Path
 
+        import yaml
+
         from amplifier_module_provider_github_copilot.fake_tool_detection import (
+            _load_fake_tool_detection_config_cached,  # pyright: ignore[reportPrivateUsage]
             load_fake_tool_detection_config,
         )
+
+        # Clear any cached result (needed to test fresh error path)
+        _load_fake_tool_detection_config_cached.cache_clear()  # pyright: ignore[reportPrivateUsage]
 
         config_path = Path(tmp_path) / "broken.yaml"  # type: ignore[arg-type]
         config_path.write_text("""
@@ -751,9 +760,12 @@ patterns:
 """)
 
         with caplog.at_level(logging.WARNING):
-            config = load_fake_tool_detection_config(config_path=config_path)
+            # P3 Fix: Now raises instead of returning fallback
+            with pytest.raises(yaml.YAMLError):
+                load_fake_tool_detection_config(config_path=config_path)
 
-        # Should have logged warning
+        # Should have logged warning before raising
         assert "Error parsing" in caplog.text
-        # Should use defaults
-        assert len(config.patterns) > 0
+
+        # Clean up cache for other tests
+        _load_fake_tool_detection_config_cached.cache_clear()  # pyright: ignore[reportPrivateUsage]

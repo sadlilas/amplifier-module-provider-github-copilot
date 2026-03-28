@@ -453,10 +453,11 @@ class TestMountIntegration:
             mock_release.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_mount_failure_releases_reference(self) -> None:
-        """Exception during mount() releases acquired reference.
+    async def test_mount_failure_releases_reference_and_raises(self) -> None:
+        """Exception during mount() releases acquired reference, then raises.
 
         Contract: provider-protocol:complete:MUST:1
+        P2 Fix: Raise after releasing reference (not return None).
         """
         import amplifier_module_provider_github_copilot as provider_module
 
@@ -475,11 +476,11 @@ class TestMountIntegration:
             mock_client = MagicMock(spec=CopilotClientWrapper)
             mock_acquire.return_value = mock_client
 
-            result = await provider_module.mount(mock_coordinator)
+            # P2 Fix: mount() now raises instead of returning None
+            with pytest.raises(RuntimeError, match="Mount failed"):
+                await provider_module.mount(mock_coordinator)
 
-            # Mount should return None on failure
-            assert result is None
-            # Reference should have been released
+            # Reference should have been released before raise
             mock_release.assert_called_once()
 
     @pytest.mark.asyncio
@@ -675,7 +676,7 @@ class TestReleaseSharedClientClosureErrors:
 
 
 class TestMountExceptionPaths:
-    """Cover __init__.py L208-213: mount() exception returns None (graceful degradation)."""
+    """Cover __init__.py: mount() exception paths raise (P2 Fix)."""
 
     @pytest.fixture(autouse=True)
     def reset_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -686,10 +687,11 @@ class TestMountExceptionPaths:
         monkeypatch.setattr(m, "_shared_client_lock", None)
 
     @pytest.mark.asyncio
-    async def test_mount_coordinator_exception_returns_none(self) -> None:
-        """L208-213: coordinator.mount() throwing returns None (graceful degradation).
+    async def test_mount_coordinator_exception_raises(self) -> None:
+        """coordinator.mount() throwing raises (P2 Fix: not graceful degradation).
 
         Contract: provider-protocol.md
+        P2 Fix: Raise instead of return None.
         """
         import amplifier_module_provider_github_copilot as m
 
@@ -704,15 +706,15 @@ class TestMountExceptionPaths:
             ),
             patch.object(m, "_release_shared_client", new_callable=AsyncMock),
         ):
-            result = await m.mount(coordinator)
-
-        assert result is None
+            with pytest.raises(Exception, match="coordinator error"):
+                await m.mount(coordinator)
 
     @pytest.mark.asyncio
-    async def test_mount_acquire_timeout_returns_none(self) -> None:
-        """L208-210: TimeoutError from _acquire_shared_client returns None.
+    async def test_mount_acquire_timeout_raises(self) -> None:
+        """TimeoutError from _acquire_shared_client raises (P2 Fix).
 
         Contract: provider-protocol.md
+        P2 Fix: Raise instead of return None.
         """
         import amplifier_module_provider_github_copilot as m
 
@@ -724,15 +726,15 @@ class TestMountExceptionPaths:
             new_callable=AsyncMock,
             side_effect=TimeoutError("lock timeout"),
         ):
-            result = await m.mount(coordinator)
-
-        assert result is None
+            with pytest.raises(TimeoutError, match="lock timeout"):
+                await m.mount(coordinator)
 
     @pytest.mark.asyncio
-    async def test_mount_acquire_generic_exception_returns_none(self) -> None:
-        """L211-213: Generic exception from _acquire_shared_client returns None.
+    async def test_mount_acquire_generic_exception_raises(self) -> None:
+        """Generic exception from _acquire_shared_client raises (P2 Fix).
 
         Contract: provider-protocol.md
+        P2 Fix: Raise instead of return None.
         """
         import amplifier_module_provider_github_copilot as m
 
@@ -744,9 +746,8 @@ class TestMountExceptionPaths:
             new_callable=AsyncMock,
             side_effect=RuntimeError("sdk error"),
         ):
-            result = await m.mount(coordinator)
-
-        assert result is None
+            with pytest.raises(RuntimeError, match="sdk error"):
+                await m.mount(coordinator)
 
 
 # ============================================================================

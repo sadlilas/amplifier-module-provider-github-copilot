@@ -168,11 +168,13 @@ def load_observability_config() -> ObservabilityConfig:
     except Exception as e:
         from .security_redaction import redact_sensitive_text
 
+        # P3 Fix: Re-raise to prevent lru_cache from caching the failure.
+        # Returning a fallback here would poison the cache for the process lifetime.
         logger.warning(
-            "[OBSERVABILITY] Failed to load config: %s. Using defaults.",
+            "[OBSERVABILITY] Failed to load config: %s. Re-raising to avoid cache poison.",
             redact_sensitive_text(e),
         )
-        return _default_observability_config()
+        raise
 
 
 # ============================================================================
@@ -221,6 +223,9 @@ class LlmLifecycleContext:
     provider_name: str
     model: str
     start_time: float = field(default_factory=time.time)
+    # P2 Fix #8: Track emission state for auto-cleanup on exception
+    request_emitted: bool = field(default=False)
+    response_emitted: bool = field(default=False)
 
     async def emit_request(
         self,
@@ -264,6 +269,7 @@ class LlmLifecycleContext:
             self.config.event_names.llm_request,
             payload,
         )
+        self.request_emitted = True  # P2 Fix: Track for llm_lifecycle cleanup
 
     async def emit_response_ok(
         self,
@@ -316,6 +322,7 @@ class LlmLifecycleContext:
             self.config.event_names.llm_response,
             payload,
         )
+        self.response_emitted = True  # P2 Fix #8: Track emission for orphan prevention
 
     async def emit_response_error(
         self,
@@ -345,6 +352,7 @@ class LlmLifecycleContext:
                 "error_message": sanitized_message,
             },
         )
+        self.response_emitted = True  # P2 Fix #8: Track emission for orphan prevention
 
     async def emit_retry(
         self,
@@ -413,4 +421,17 @@ async def llm_lifecycle(
         model=model,
     )
 
-    yield ctx
+    # P2 Fix #8: Wrap yield in try/finally to ensure llm:response is always emitted.
+    # Contract: observability:Events:MUST:3 - MUST emit llm:response after llm:request.
+    # Without this, exceptions escaping the context manager leave orphaned llm:request events.
+    try:
+        yield ctx
+    except BaseException as exc:
+        # Auto-emit error response if request was emitted but response wasn't
+        # (prevents orphaned llm:request events that break trace correlation)
+        if ctx.request_emitted and not ctx.response_emitted:
+            await ctx.emit_response_error(
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+            )
+        raise

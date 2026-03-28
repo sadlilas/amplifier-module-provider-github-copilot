@@ -488,9 +488,24 @@ class GitHubCopilotProvider:
                         attachments=None,
                         system_message=internal_request.system_message,
                     )
-                except Exception:
+                except Exception as e:
+                    # P1 Fix: Don't silently swallow exception - propagate to caller.
+                    # Breaking here would return empty accumulator (silent data loss).
+                    # Also emit error event to satisfy observability contract
+                    # (llm:response MUST be emitted).
+                    #
+                    # Contract: error-hierarchy.md — MUST translate SDK errors to kernel errors.
+                    # The correction path must use the same error translation as the main path.
+                    error_config_for_correction = load_error_config()
+                    translated = translate_sdk_error(
+                        e, error_config_for_correction, provider="github-copilot", model=model
+                    )
                     log_exhausted(ftd_config, correction_attempt + 1)
-                    break
+                    await ctx.emit_response_error(
+                        error_type=type(translated).__name__,
+                        error_message=str(translated),
+                    )
+                    raise translated from e
             else:
                 log_exhausted(ftd_config, ftd_config.max_correction_attempts)
 
@@ -815,9 +830,13 @@ class GitHubCopilotProvider:
         Safe to call multiple times (idempotent).
         """
         # Cancel pending emit tasks
-        for task in self._pending_emit_tasks:
-            if not task.done():
-                task.cancel()
+        # P2 Fix: Await cancelled tasks to let cleanup run before clearing.
+        # Without await, asyncio logs "Task was destroyed but it is pending!"
+        tasks_to_cancel = [t for t in self._pending_emit_tasks if not t.done()]
+        for task in tasks_to_cancel:
+            task.cancel()
+        if tasks_to_cancel:
+            await asyncio.gather(*tasks_to_cancel, return_exceptions=True)
         self._pending_emit_tasks.clear()
 
         if hasattr(self, "_client") and self._client:

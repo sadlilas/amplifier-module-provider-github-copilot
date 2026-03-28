@@ -123,10 +123,11 @@ class TestAC5FinishReasonMap:
 
         assert hasattr(result, "finish_reason_map")
         assert result.finish_reason_map is not None
-        # Check expected mappings from events.yaml
-        assert result.finish_reason_map.get("end_turn") == "STOP"
-        assert result.finish_reason_map.get("stop") == "STOP"
-        assert result.finish_reason_map.get("tool_use") == "TOOL_USE"
+        # P2 Fix #3: YAML now uses lowercase values per amplifier-core proto
+        # Valid values: "stop", "tool_calls", "length", "content_filter"
+        assert result.finish_reason_map.get("end_turn") == "stop"
+        assert result.finish_reason_map.get("stop") == "stop"
+        assert result.finish_reason_map.get("tool_use") == "tool_calls"
 
     def test_translate_event_uses_finish_reason_map(self):
         """translate_event should map finish reasons per config."""

@@ -96,13 +96,16 @@ def is_assistant_message(event_type: str | None) -> bool:
 
     SDK uses "assistant.message" for completion with potential tool_requests.
     This is the event that signals first-turn complete for tool capture.
+
+    IMPORTANT: Uses explicit set matching, NOT substring matching.
+    Substring matching is dangerous — "assistant_message_delta" would match.
+    P2 Fix: Align with is_idle_event, is_error_event, is_usage_event pattern.
     """
     if event_type is None:
         return False
     type_lower = event_type.lower()
-    # SDK format: "assistant.message"
-    # Legacy format: "assistant_message", "ASSISTANT_MESSAGE"
-    return "assistant" in type_lower and "message" in type_lower and "delta" not in type_lower
+    # P2 Fix: Explicit set matching (consistent with other helpers in this file)
+    return type_lower in {"assistant.message", "assistant_message"}
 
 
 def is_usage_event(event_type: str | None, *, usage_events: Set[str] | None = None) -> bool:

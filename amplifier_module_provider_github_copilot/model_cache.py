@@ -233,7 +233,9 @@ def read_cache(
     if max_age_seconds is None:
         max_age_seconds = get_cache_ttl_seconds()
 
-    timestamp = data.get("timestamp", 0)
+    # P1 Fix: Handle null timestamp. dict.get() returns None if key exists with null value.
+    # Using `or 0` handles both missing key and explicit null.
+    timestamp = data.get("timestamp") or 0
     age = time.time() - timestamp
 
     if age > max_age_seconds:

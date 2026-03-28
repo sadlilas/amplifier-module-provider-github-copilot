@@ -506,12 +506,16 @@ class TestObservabilityConfigFallbacks:
         # Clear cache for other tests
         load_observability_config.cache_clear()
 
-    def test_config_returns_default_on_yaml_parse_error(self) -> None:
-        """load_observability_config returns defaults when YAML parsing fails.
+    def test_config_raises_on_yaml_parse_error(self) -> None:
+        """load_observability_config raises when YAML parsing fails.
 
+        P3 Fix: Re-raise prevents lru_cache from caching failure result.
+        Three-Medium Architecture: YAML errors should fail-fast.
         Covers lines 168-170.
         """
         from unittest.mock import MagicMock, patch
+
+        import yaml
 
         from amplifier_module_provider_github_copilot.observability import (
             load_observability_config,
@@ -521,18 +525,15 @@ class TestObservabilityConfigFallbacks:
         load_observability_config.cache_clear()
 
         # Mock importlib to return invalid YAML
-        MagicMock()
         mock_config_file = MagicMock()
         mock_config_file.read_text.return_value = "invalid: yaml: content: [[[["
 
         with patch("importlib.resources.files") as mock_resources:
             mock_resources.return_value.joinpath.return_value = mock_config_file
 
-            config = load_observability_config()
-
-        # Should return default config (graceful degradation)
-        assert config is not None
-        assert config.provider_name == "github-copilot"
+            # P3 Fix: Now raises instead of returning fallback
+            with pytest.raises(yaml.YAMLError):
+                load_observability_config()
 
         # Clear cache for other tests
         load_observability_config.cache_clear()

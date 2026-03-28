@@ -563,10 +563,12 @@ class TestCloseAndCleanup:
 
     @pytest.mark.asyncio
     async def test_close_cancels_pending_emit_tasks(self) -> None:
-        """close() cancels pending emit tasks.
+        """close() cancels and awaits pending emit tasks.
 
         Covers: provider.py lines 838-842 (pending task cleanup)
+        P2 Fix #9: await asyncio.gather after cancel to let cleanup run.
         """
+        import asyncio
         from unittest.mock import AsyncMock
 
         from amplifier_module_provider_github_copilot.provider import (
@@ -575,18 +577,24 @@ class TestCloseAndCleanup:
 
         provider = GitHubCopilotProvider()
 
-        # Simulate pending tasks
-        mock_task = MagicMock()
-        mock_task.done.return_value = False
-        mock_task.cancel = MagicMock()
-        provider._pending_emit_tasks.add(mock_task)  # pyright: ignore[reportPrivateUsage]
+        # Create a real asyncio task that we can cancel and await
+        async def slow_emit() -> None:
+            try:
+                await asyncio.sleep(10)
+            except asyncio.CancelledError:
+                pass  # Task was cancelled
+
+        task = asyncio.create_task(slow_emit())
+        provider._pending_emit_tasks.add(task)  # pyright: ignore[reportPrivateUsage]
 
         provider._client = MagicMock()  # pyright: ignore[reportPrivateUsage]
         provider._client.close = AsyncMock()  # pyright: ignore[reportPrivateUsage]
 
         await provider.close()
 
-        mock_task.cancel.assert_called_once()
+        # Task should be cancelled
+        assert task.cancelled() or task.done()
+        # Pending tasks should be cleared
         assert len(provider._pending_emit_tasks) == 0  # pyright: ignore[reportPrivateUsage]
 
 
@@ -849,13 +857,14 @@ class TestFakeToolDetectionRetry:
         assert response.content is not None
 
     @pytest.mark.asyncio
-    async def test_fake_tool_correction_exception_breaks_retry(
+    async def test_fake_tool_correction_exception_raises(
         self,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """Exception during correction attempt breaks retry loop.
+        """Exception during correction attempt raises (P1 Fix: no silent data loss).
 
         Covers: provider.py lines 506-509 (exception in correction)
+        P1 Fix #2: Re-raise exception instead of swallowing and returning empty response.
         """
         import logging
 
@@ -899,12 +908,16 @@ class TestFakeToolDetectionRetry:
         request.tools = [{"name": "search", "description": "Search"}]
 
         with caplog.at_level(logging.DEBUG):
-            response = await provider.complete(request)
+            # P1 Fix: Now raises translated kernel error instead of raw exception.
+            # Contract: error-hierarchy.md — SDK errors MUST be translated.
+            # ConnectionError → NetworkError per errors.yaml
+            from amplifier_core.llm_errors import NetworkError
 
-        # Should have attempted correction (2 attempts)
+            with pytest.raises(NetworkError, match="Network error during correction"):
+                await provider.complete(request)
+
+        # Should have attempted correction (2 attempts: original + retry)
         assert attempt == 2
-        # Response still returned (from first attempt despite fake tool)
-        assert response is not None
 
 
 # =============================================================================
@@ -1175,4 +1188,3 @@ class TestE2EToolCaptureHappyPath:
         assert response.tool_calls is not None
         assert len(response.tool_calls) == 1
         assert response.tool_calls[0].name == "write_file"
-

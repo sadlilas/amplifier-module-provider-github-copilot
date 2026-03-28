@@ -37,8 +37,10 @@ class LoggingConfig:
     # we fail closed (don't log potentially sensitive LLM response text).
     log_response_text: bool = False
     log_response_text_limit: int = 500
-    log_tool_calls: bool = True
-    log_correction_message: bool = True
+    # P1 Fix: Secure defaults match YAML (false). If YAML fails to load,
+    # we fail closed (don't log potentially sensitive tool arguments/correction text).
+    log_tool_calls: bool = False
+    log_correction_message: bool = False
     level_on_detection: str = "INFO"
     level_on_retry: str = "INFO"
     level_on_success: str = "INFO"
@@ -138,12 +140,15 @@ def _load_fake_tool_detection_config_cached(
 
         # Load logging config
         logging_data = data.get("logging", {})
+        # Security: All sensitive logging defaults to False (fail-closed).
+        # If YAML is readable, it can explicitly enable; if YAML is missing,
+        # we don't inadvertently log secrets.
         logging_config = LoggingConfig(
             log_matched_pattern=logging_data.get("log_matched_pattern", True),
-            log_response_text=logging_data.get("log_response_text", True),
+            log_response_text=logging_data.get("log_response_text", False),
             log_response_text_limit=logging_data.get("log_response_text_limit", 500),
-            log_tool_calls=logging_data.get("log_tool_calls", True),
-            log_correction_message=logging_data.get("log_correction_message", True),
+            log_tool_calls=logging_data.get("log_tool_calls", False),
+            log_correction_message=logging_data.get("log_correction_message", False),
             level_on_detection=logging_data.get("level_on_detection", "INFO"),
             level_on_retry=logging_data.get("level_on_retry", "INFO"),
             level_on_success=logging_data.get("level_on_success", "INFO"),
@@ -162,8 +167,10 @@ def _load_fake_tool_detection_config_cached(
     except yaml.YAMLError as e:
         from .security_redaction import redact_sensitive_text
 
+        # P3 Fix: Re-raise to prevent lru_cache from caching the failure.
+        # Returning a fallback here would poison the cache for the process lifetime.
         logger.warning("Error parsing fake tool detection config: %s", redact_sensitive_text(e))
-        return FakeToolDetectionConfig(patterns=_default_patterns())
+        raise
 
 
 def load_fake_tool_detection_config(
